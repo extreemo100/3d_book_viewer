@@ -7,9 +7,31 @@
     <style>
         body { margin: 0; }
         canvas { display: block; }
+        #animation-selector {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        #animation-selector button {
+            display: block;
+            margin: 5px 0;
+        }
+        #animation-info {
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
+    <div id="animation-selector">
+        <div id="animation-info">Animation: <span id="current-animation-name">None</span> (<span id="current-animation-index">0</span>/<span id="total-animations">0</span>)</div>
+        <button id="prev-button">Previous</button>
+        <button id="next-button">Next</button>
+    </div>
     <script type="importmap">
         {
             "imports": {
@@ -24,6 +46,9 @@
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
         let scene, camera, renderer, mixer, clock, controls;
+        const animations = [];
+        let currentAnimationAction = null;
+        let currentAnimationIndex = 0;
 
         init();
         animate();
@@ -72,15 +97,28 @@
 
                 // Parse animations
                 mixer = new THREE.AnimationMixer(model);
-                
-                // Check if there are at least 9 animations
-                if (gltf.animations.length >= 9) {
-                    const ninthAnimation = gltf.animations[8]; // Get the 9th animation (index 8)
-                    const action = mixer.clipAction(ninthAnimation);
-                    action.play();
-                } else {
-                    console.warn(`The model only has ${gltf.animations.length} animations, cannot play the 9th one.`);
+                gltf.animations.forEach((clip) => {
+                    animations.push(clip); // Store the animation clip
+                });
+
+                // Update UI with total animations
+                document.getElementById('total-animations').textContent = animations.length;
+
+                // Play the first animation by default
+                if (animations.length > 0) {
+                    playAnimation(currentAnimationIndex);
                 }
+
+                // Add event listeners for Next and Previous buttons
+                document.getElementById('next-button').addEventListener('click', () => {
+                    currentAnimationIndex = (currentAnimationIndex + 1) % animations.length;
+                    playAnimation(currentAnimationIndex);
+                });
+
+                document.getElementById('prev-button').addEventListener('click', () => {
+                    currentAnimationIndex = (currentAnimationIndex - 1 + animations.length) % animations.length;
+                    playAnimation(currentAnimationIndex);
+                });
             });
 
             // Lights
@@ -91,6 +129,19 @@
             const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
             directionalLight.position.set(1, 1, 1);
             scene.add(directionalLight);
+        }
+
+        function playAnimation(index) {
+            if (currentAnimationAction) {
+                currentAnimationAction.stop(); // Stop the current animation
+            }
+            const clip = animations[index]; // Get the animation clip
+            currentAnimationAction = mixer.clipAction(clip); // Create a new action
+            currentAnimationAction.reset().play(); // Play the animation
+
+            // Update UI with current animation name and index
+            document.getElementById('current-animation-name').textContent = clip.name || `Animation ${index + 1}`;
+            document.getElementById('current-animation-index').textContent = index + 1;
         }
 
         function animate() {
