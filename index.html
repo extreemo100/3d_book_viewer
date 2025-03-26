@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Book Navigator with GLTF Animations (Top-Down View)</title>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+        #animation-selector {
+            display: none;
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        #animation-info {
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div id="animation-selector">
+        <div id="animation-info">Action: <span id="current-action-name">None</span> (<span id="current-action-index">0</span>/13)</div>
+    </div>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.162.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.162.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        let scene, camera, renderer, mixer, clock, controls;
+        const animations = [];
+        let currentAnimationAction = null;
+        let currentPage = 0; // Current pose (0-4)
+        const totalPoses = 17; // Poses 0-4
+        const totalNextFlips = 16; // Next flips 5-8
+        const totalPreviousFlips = 16; // Previous flips 9-12
+        let isAnimating = false; // Track if an animation is in progress
+        
+        // 3D Button objects
+        let nextButton, prevButton;
+        let linkButton1, linkButton2, linkButton3;
+        let nextButtonHovered = false;
+        let prevButtonHovered = false;
+        let link1Hovered = false;
+        let link2Hovered = false;
+        let link3Hovered = false;
+
+        // Link URLs
+        const linkUrls = {
+            'link3': 'https://psopk.com/en/lubricants/lubricant-finder/',
+            'link2': 'https://psopk.com/en/lubricants',
+            'link1': 'https://psopk.com/'
+        };
+
+        // Background image mapping
+        const backgroundImages = {
+            '5': 'bg11.png', // Replace with your image path
+            '6': 'bg12.png', // Replace with your image path
+            '8': 'bg13.png', // Replace with your image path
+            '9': 'bg14.png', // Replace with your image path
+            '10': 'bg15.png', // Replace with your image path
+            '12': 'bg16.png', // Replace with your image path
+            'link1': 'bg17.png', // Unique background for link 1
+            'link2': 'bg18.png', // Unique background for link 2
+            'link3': 'bg19.png', // Unique background for link 3
+        };
+
+        // Raycaster for button interaction
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        init();
+        animate();
+
+        function init() {
+            // Scene
+            scene = new THREE.Scene();
+
+            // Camera (Top-Down View)
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 0, 90); // Position the camera above the model
+            camera.lookAt(0, 90, 0); // Make the camera look at the center of the scene
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({
+                antialias: true, // Enable antialiasing
+                powerPreference: "high-performance", // Optimize for performance
+            });
+            renderer.setPixelRatio(window.devicePixelRatio || 1); // Use high-DPI scaling
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // Controls (Restrict to top-down view)
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableRotate = false; // Disable rotation
+            controls.enablePan = true; // Allow panning
+            controls.enableZoom = true; // Allow zooming
+            controls.minDistance = 0.5; // Minimum zoom distance
+            controls.maxDistance = 4.5; // Maximum zoom distance
+            controls.maxPolarAngle = 0; // Restrict camera to top-down view
+            controls.minPolarAngle = 0; // Restrict camera to top-down view
+
+            // Clock
+            clock = new THREE.Clock();
+
+            // Load GLB model for the book
+            const loader = new GLTFLoader();
+            loader.load('book2.glb', function(gltf) {
+                const model = gltf.scene;
+
+                // Rotate the model 90 degrees counterclockwise along the Z-axis
+                model.rotation.z = 0; // 90 degrees in radians
+                model.rotation.y = -Math.PI/2; 
+
+                model.position.x = 0.2; 
+                model.position.z = -0.4; 
+
+                scene.add(model);
+
+                // Parse animations
+                mixer = new THREE.AnimationMixer(model);
+                gltf.animations.forEach((clip) => {
+                    animations.push(clip); // Store the animation clip
+                });
+
+                // Check for URL parameter to set the initial animation and background
+                const urlParams = new URLSearchParams(window.location.search);
+                const animationParam = urlParams.get('animation');
+                const linkParam = urlParams.get('link'); // Additional parameter for unique backgrounds
+
+                if (animationParam) {
+                    const animationIndex = getAnimationIndexFromParam(animationParam);
+                    if (animationIndex !== null && animations.length > animationIndex) {
+                        currentPage = animationIndex; // Set the current page to the specified animation
+                    }
+                }
+
+                // Set the background based on the URL parameters
+                let backgroundKey = animationParam;
+                if (linkParam) {
+                    backgroundKey = linkParam; // Use the link parameter for unique backgrounds
+                }
+                const backgroundImage = backgroundImages[backgroundKey];
+                if (backgroundImage) {
+                    setBackground(backgroundImage);
+                }
+
+                // Play the initial animation
+                playAnimation(currentPage);
+            });
+
+            // Load Next Button GLB
+            loader.load('nextbutton1.glb', function(gltf) {
+                nextButton = gltf.scene;
+                nextButton.position.set(-1.15,0, 0.4); // Position to the right side
+                nextButton.rotation.y = Math.PI;
+                nextButton.rotation.z = Math.PI/2; // Rotate to match the previous orientation
+                nextButton.scale.set(0.1, 0.1, 1); // Scale appropriately
+                nextButton.userData = {
+                    type: 'next',
+                    interactive: true,
+                    disabled: false
+                };
+                scene.add(nextButton);
+            });
+
+            // Load Previous Button GLB
+            loader.load('backbutton1.glb', function(gltf) {
+                prevButton = gltf.scene;
+                prevButton.position.set(-1.15, 0, -1.2); // Position to the right side
+                prevButton.rotation.y = Math.PI;
+                prevButton.rotation.z = Math.PI/2;
+                prevButton.scale.set(1, 1, 1); // Scale appropriately
+                prevButton.userData = {
+                    type: 'prev',
+                    interactive: true,
+                    disabled: false
+                };
+                scene.add(prevButton);
+            });
+
+            // Load Custom Link Button 1 GLB
+            loader.load('web_page.glb', function(gltf) {
+                linkButton1 = gltf.scene;
+                linkButton1.position.set(0.9, 0, 1.6); // Position to the left side
+                linkButton1.rotation.z = Math.PI/2; // Rotate to match the previous orientation
+                linkButton1.rotation.y = Math.PI;
+                linkButton1.scale.set(15, 15, 15); // Scale appropriately
+                linkButton1.userData = {
+                    type: 'link1',
+                    interactive: true,
+                    disabled: false,
+                    url: linkUrls['link1']
+                };
+                scene.add(linkButton1);
+            });
+
+            // Load Custom Link Button 2 GLB
+            loader.load('more_information.glb', function(gltf) {
+                linkButton2 = gltf.scene;
+                linkButton2.position.set(0.2, 0, 1.6); // Position to the left side
+                linkButton2.rotation.z = Math.PI/2; // Rotate to match the previous orientation
+                linkButton2.rotation.y = Math.PI;
+                linkButton2.scale.set(15, 15, 15); // Scale appropriately
+                linkButton2.userData = {
+                    type: 'link2',
+                    interactive: true,
+                    disabled: false,
+                    url: linkUrls['link2']
+                };
+                scene.add(linkButton2);
+            });
+
+            // Load Custom Link Button 3 GLB
+            loader.load('vehicle_selection.glb', function(gltf) {
+                linkButton3 = gltf.scene;
+                linkButton3.position.set(-0.5, 0, 1.6); // Position to the left side
+                linkButton3.rotation.z = Math.PI/2; // Rotate to match the previous orientation
+                linkButton3.rotation.y = Math.PI;
+                linkButton3.scale.set(15, 15, 15); // Scale appropriately
+                linkButton3.userData = {
+                    type: 'link3',
+                    interactive: true,
+                    disabled: false,
+                    url: linkUrls['link3']
+                };
+                scene.add(linkButton3);
+            });
+
+            // Lights
+            const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 2); // Bright ambient light
+            hemisphereLight.position.set(0, 50, 0);
+            scene.add(hemisphereLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(1, 1, 1);
+            scene.add(directionalLight);
+
+            // Mouse event listeners for 3D button interaction
+            renderer.domElement.addEventListener('click', onMouseClick);
+            renderer.domElement.addEventListener('mousemove', onMouseMove);
+        }
+
+        function getAnimationIndexFromParam(param) {
+            // Map URL parameter values to animation indices
+            switch (param) {
+                case '5': return 4; // 5th animation (index 4)
+                case '6': return 5; // 6th animation (index 5)
+                case '8': return 7; // 8th animation (index 7)
+                case '9': return 8; // 9th animation (index 8)
+                case '10': return 9; // 10th animation (index 9)
+                case '12': return 11; // 12th animation (index 11)
+                default: return null; // Invalid parameter
+            }
+        }
+
+        function setBackground(imagePath) {
+            const textureLoader = new THREE.TextureLoader();
+            textureLoader.load(imagePath, (texture) => {
+                scene.background = texture; // Set the background texture
+            });
+        }
+
+        function playAnimation(index) {
+            if (currentAnimationAction) {
+                currentAnimationAction.stop(); // Stop the current animation
+            }
+            const clip = animations[index]; // Get the animation clip
+            currentAnimationAction = mixer.clipAction(clip); // Create a new action
+            currentAnimationAction.setLoop(THREE.LoopOnce, 1); // Play the animation once
+            currentAnimationAction.clampWhenFinished = true; // Keep the final state of the animation
+            currentAnimationAction.reset().play(); // Play the animation
+
+            // Update UI with current action name and index
+            document.getElementById('current-action-name').textContent = clip.name || `Action ${index}`;
+            document.getElementById('current-action-index').textContent = index;
+
+            // Disable buttons while animating
+            isAnimating = true;
+            if (nextButton) nextButton.userData.disabled = true;
+            if (prevButton) prevButton.userData.disabled = true;
+
+            // Check if the animation has completed
+            const animationDuration = clip.duration;
+            setTimeout(() => {
+                isAnimating = false;
+                if (nextButton) nextButton.userData.disabled = false;
+                if (prevButton) prevButton.userData.disabled = false;
+            }, animationDuration * 1000); // Convert duration to milliseconds
+        }
+
+        function handleNext() {
+            if (!isAnimating && currentPage < totalPoses - 1) {
+                // Play the next flip animation
+                const nextFlipIndex = totalPoses + currentPage; // Next flips start at index 5
+                playAnimation(nextFlipIndex);
+
+                // After the flip, play the next pose
+                setTimeout(() => {
+                    currentPage++;
+                    playAnimation(currentPage);
+                }, animations[nextFlipIndex].duration * 1000); // Wait for the flip animation to finish
+            }
+        }
+
+        function handlePrevious() {
+            if (!isAnimating && currentPage > 0) {
+                // Play the previous flip animation
+                const previousFlipIndex = totalPoses + totalNextFlips + (currentPage - 1); // Previous flips start at index 9
+                playAnimation(previousFlipIndex);
+
+                // After the flip, play the previous pose
+                setTimeout(() => {
+                    currentPage--;
+                    playAnimation(currentPage);
+                }, animations[previousFlipIndex].duration * 1000); // Wait for the flip animation to finish
+            }
+        }
+
+        function handleLink(linkType) {
+            const url = linkUrls[linkType];
+            if (url) {
+                window.location.href = url;
+            }
+        }
+
+        function onMouseMove(event) {
+            // Calculate mouse position in normalized device coordinates
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+            
+            // Update the picking ray with the camera and mouse position
+            raycaster.setFromCamera(mouse, camera);
+            
+            // Reset hover states
+            nextButtonHovered = false;
+            prevButtonHovered = false;
+            link1Hovered = false;
+            link2Hovered = false;
+            link3Hovered = false;
+            
+            // Calculate objects intersecting the picking ray
+            const intersects = raycaster.intersectObjects(scene.children, true);
+            
+            for (let i = 0; i < intersects.length; i++) {
+                // Find the first ancestor with userData
+                let currentObject = intersects[i].object;
+                while (currentObject && !currentObject.userData?.interactive) {
+                    currentObject = currentObject.parent;
+                }
+                
+                if (currentObject && currentObject.userData.interactive && !currentObject.userData.disabled) {
+                    switch (currentObject.userData.type) {
+                        case 'next':
+                            nextButtonHovered = true;
+                            document.body.style.cursor = 'pointer';
+                            break;
+                        case 'prev':
+                            prevButtonHovered = true;
+                            document.body.style.cursor = 'pointer';
+                            break;
+                        case 'link1':
+                            link1Hovered = true;
+                            document.body.style.cursor = 'pointer';
+                            break;
+                        case 'link2':
+                            link2Hovered = true;
+                            document.body.style.cursor = 'pointer';
+                            break;
+                        case 'link3':
+                            link3Hovered = true;
+                            document.body.style.cursor = 'pointer';
+                            break;
+                    }
+                    break;
+                }
+            }
+            
+            // Reset cursor if not hovering over any button
+            if (!nextButtonHovered && !prevButtonHovered && !link1Hovered && !link2Hovered && !link3Hovered) {
+                document.body.style.cursor = 'auto';
+            }
+        }
+
+        function onMouseClick(event) {
+            // Calculate mouse position in normalized device coordinates
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+            
+            // Update the picking ray with the camera and mouse position
+            raycaster.setFromCamera(mouse, camera);
+            
+            // Calculate objects intersecting the picking ray
+            const intersects = raycaster.intersectObjects(scene.children, true);
+            
+            for (let i = 0; i < intersects.length; i++) {
+                // Find the first ancestor with userData
+                let currentObject = intersects[i].object;
+                while (currentObject && !currentObject.userData?.interactive) {
+                    currentObject = currentObject.parent;
+                }
+                
+                if (currentObject && currentObject.userData.interactive && !currentObject.userData.disabled) {
+                    switch (currentObject.userData.type) {
+                        case 'next':
+                            handleNext();
+                            break;
+                        case 'prev':
+                            handlePrevious();
+                            break;
+                        case 'link1':
+                        case 'link2':
+                        case 'link3':
+                            handleLink(currentObject.userData.type);
+                            break;
+                    }
+                    break;
+                }
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            if (mixer) mixer.update(delta); // Update the animation mixer
+            controls.update(); // Update the camera controls
+            
+            // Add visual feedback for button hover
+            const normalScale = 15;
+            const hoverScale = 16;
+            
+            // Apply hover effect to navigation buttons
+            if (nextButton) {
+                if (nextButtonHovered && !nextButton.userData.disabled) {
+                    nextButton.scale.set(hoverScale, hoverScale, hoverScale);
+                } else {
+                    nextButton.scale.set(normalScale, normalScale, normalScale);
+                }
+            }
+            
+            if (prevButton) {
+                if (prevButtonHovered && !prevButton.userData.disabled) {
+                    prevButton.scale.set(hoverScale, hoverScale, hoverScale);
+                } else {
+                    prevButton.scale.set(normalScale, normalScale, normalScale);
+                }
+            }
+            
+            // Apply hover effect to link buttons
+            if (linkButton1) {
+                if (link1Hovered) {
+                    linkButton1.scale.set(hoverScale, hoverScale, hoverScale);
+                } else {
+                    linkButton1.scale.set(normalScale, normalScale, normalScale);
+                }
+            }
+            
+            if (linkButton2) {
+                if (link2Hovered) {
+                    linkButton2.scale.set(hoverScale, hoverScale, hoverScale);
+                } else {
+                    linkButton2.scale.set(normalScale, normalScale, normalScale);
+                }
+            }
+            
+            if (linkButton3) {
+                if (link3Hovered) {
+                    linkButton3.scale.set(hoverScale, hoverScale, hoverScale);
+                } else {
+                    linkButton3.scale.set(normalScale, normalScale, normalScale);
+                }
+            }
+            
+            renderer.render(scene, camera); // Render the scene
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
