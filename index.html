@@ -240,19 +240,7 @@
         hemisphereLight.position.set(0, 50, 0);
         scene.add(hemisphereLight);
 
-        const pointLight = new THREE.PointLight(0xffffff, 1, 100);
-        pointLight.position.set(0, 45, 0);
-        scene.add(pointLight);
-
-        // Back light
-        const backLight = new THREE.DirectionalLight(0xffffff, 0.2);
-        backLight.position.set(0, 5, -5);
-        scene.add(backLight);
-
-        // Key light
-        const keyLight = new THREE.DirectionalLight(0xffffff, 0.01);
-        keyLight.position.set(5, 5, 5);
-        scene.add(keyLight);
+        
 
         function getAnimationIndexFromParam(param) {
             // Map URL parameter values to animation indices
