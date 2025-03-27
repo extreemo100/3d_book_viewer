@@ -236,11 +236,11 @@
             });
 
             // Lights
-            const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1); // Bright ambient light
+            const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8); // Bright ambient light
             hemisphereLight.position.set(0, 50, 0);
             scene.add(hemisphereLight);
             
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
             directionalLight.position.set(1, 1, 1);
             scene.add(directionalLight);
 
