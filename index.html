@@ -239,8 +239,12 @@
             const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2); // Bright ambient light
             hemisphereLight.position.set(0, 50, 0);
             scene.add(hemisphereLight);
-       
+             
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(1, 1, 1);
+            scene.add(directionalLight);
             // Mouse event listeners for 3D button interaction
+            
             renderer.domElement.addEventListener('click', onMouseClick);
             renderer.domElement.addEventListener('mousemove', onMouseMove);
         }
