@@ -77,6 +77,16 @@
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
 
+        // Touch handling variables
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let touchStartCameraPosition = null;
+        let isTouching = false;
+        let isPanning = false;
+        let panSensitivity = 0.02; // Adjust based on testing
+        let lastTouchTime = 0;
+        let touchTimeout = null;
+
         init();
         animate();
 
@@ -306,8 +316,14 @@
                 scene.add(linkButton3);
             });
 
+            // Event listeners for mouse interaction
             renderer.domElement.addEventListener('click', onMouseClick);
             renderer.domElement.addEventListener('mousemove', onMouseMove);
+            
+            // Touch event listeners for mobile
+            renderer.domElement.addEventListener('touchstart', onTouchStart, { passive: false });
+            renderer.domElement.addEventListener('touchmove', onTouchMove, { passive: false });
+            renderer.domElement.addEventListener('touchend', onTouchEnd);
         }
 
         function getAnimationIndexFromParam(param) {
@@ -390,6 +406,122 @@
             const url = linkUrls[linkType];
             if (url) {
                 window.location.href = url;
+            }
+        }
+
+        function onTouchStart(event) {
+            // Prevent default to avoid scrolling the page
+            event.preventDefault();
+            
+            if (event.touches.length === 1) {
+                // Single touch - for panning
+                const touch = event.touches[0];
+                touchStartX = touch.clientX;
+                touchStartY = touch.clientY;
+                touchStartCameraPosition = camera.position.clone();
+                isTouching = true;
+                isPanning = false;
+                
+                // Check if we're clicking a button
+                mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = - (touch.clientY / window.innerHeight) * 2 + 1;
+                
+                // Store the current time for tap detection
+                lastTouchTime = new Date().getTime();
+                
+                // Clear any existing timeout
+                if (touchTimeout) {
+                    clearTimeout(touchTimeout);
+                }
+                
+                // Set a small timeout to differentiate between tap and pan
+                touchTimeout = setTimeout(() => {
+                    if (isTouching) {
+                        isPanning = true;
+                    }
+                }, 100); // Short delay
+            } else if (event.touches.length === 2) {
+                // Two touches - for pinch zoom (handled by OrbitControls)
+                isPanning = false;
+            }
+        }
+
+        function onTouchMove(event) {
+            // Prevent default to avoid scrolling the page
+            event.preventDefault();
+            
+            if (!isTouching || event.touches.length !== 1 || !touchStartCameraPosition) {
+                return;
+            }
+            
+            // Mark as panning to avoid triggering tap
+            isPanning = true;
+            
+            const touch = event.touches[0];
+            const deltaX = touch.clientX - touchStartX;
+            const deltaY = touch.clientY - touchStartY;
+            
+            // Calculate new camera position in the X-Z plane
+            // invert Y movement to match expected panning direction
+            const newX = touchStartCameraPosition.x - deltaX * panSensitivity;
+            const newZ = touchStartCameraPosition.z + deltaY * panSensitivity;
+            
+            // Update camera position
+            camera.position.x = newX;
+            camera.position.z = newZ;
+            
+            // Disable OrbitControls panning during touch panning
+            controls.enabled = false;
+        }
+
+        function onTouchEnd(event) {
+            // Handle tap detection for button clicks
+            const currentTime = new Date().getTime();
+            const tapDuration = currentTime - lastTouchTime;
+            
+            if (isTouching && !isPanning && tapDuration < 300) {
+                // This was a tap, not a pan - check for button interaction
+                raycaster.setFromCamera(mouse, camera);
+                const intersects = raycaster.intersectObjects(scene.children, true);
+                
+                for (let i = 0; i < intersects.length; i++) {
+                    // Find the first ancestor with userData
+                    let currentObject = intersects[i].object;
+                    while (currentObject && !currentObject.userData?.interactive) {
+                        currentObject = currentObject.parent;
+                    }
+                    
+                    if (currentObject && currentObject.userData.interactive && !currentObject.userData.disabled) {
+                        switch (currentObject.userData.type) {
+                            case 'next':
+                                handleNext();
+                                break;
+                            case 'prev':
+                                handlePrevious();
+                                break;
+                            case 'link1':
+                            case 'link2':
+                            case 'link3':
+                                handleLink(currentObject.userData.type);
+                                break;
+                        }
+                        break;
+                    }
+                }
+            }
+            
+            // Reset touch state
+            isTouching = false;
+            isPanning = false;
+            touchStartCameraPosition = null;
+            
+            // Re-enable OrbitControls
+            controls.enabled = true;
+            
+            // Clear timeout if it exists
+            if (touchTimeout) {
+                clearTimeout(touchTimeout);
+                touchTimeout = null;
             }
         }
 
@@ -543,11 +675,34 @@
             renderer.render(scene, camera); // Render the scene
         }
 
+        // Handle window resize
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
+
+        // Add mobile device detection
+        function isMobileDevice() {
+            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        }
+
+        // Adjust controls based on device
+        function setControlsForDevice() {
+            if (isMobileDevice()) {
+                // On mobile, we'll rely on touch events for panning
+                controls.enableZoom = true;
+                controls.enablePan = false; // Disable built-in panning
+                panSensitivity = 0.03; // Increased sensitivity for mobile
+            } else {
+                // On desktop, use OrbitControls normally
+                controls.enableZoom = true;
+                controls.enablePan = true;
+            }
+        }
+
+        // Call this function on initialization
+        setControlsForDevice();
     </script>
 </body>
 </html>
