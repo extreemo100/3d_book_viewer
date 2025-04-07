@@ -77,6 +77,13 @@
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
 
+        // Touch state variables for pinch zoom
+        let touchStartDistance = 0;
+        let touchStartPoint = { x: 0, y: 0 };
+        let touchEndPoint = { x: 0, y: 0 };
+        let pinchZoomTarget = new THREE.Vector3();
+        let isPinching = false;
+
         init();
         animate();
 
@@ -118,12 +125,12 @@
 
             // Controls (Restrict to top-down view)
             controls = new THREE.OrbitControls(camera, renderer.domElement);
-            controls.enableRotate = true; // Disable rotation
+            controls.enableRotate = false; // Allow rotation
             controls.enablePan = true; // Allow panning
             controls.enableZoom = true; // Allow zooming
             controls.minDistance = 0.5; // Minimum zoom distance
             controls.maxDistance = 4.5; // Maximum zoom distance
-            controls.maxPolarAngle = 0; // Restrict camera to top-down view
+            controls.maxPolarAngle = 0; // Restrict camera angle
             controls.minPolarAngle = 0; // Restrict camera to top-down view
 
             // Clock
@@ -306,8 +313,14 @@
                 scene.add(linkButton3);
             });
 
+            // Add event listeners for mouse and touch interactions
             renderer.domElement.addEventListener('click', onMouseClick);
             renderer.domElement.addEventListener('mousemove', onMouseMove);
+            
+            // Touch events for pinch zoom functionality
+            renderer.domElement.addEventListener('touchstart', onTouchStart, { passive: false });
+            renderer.domElement.addEventListener('touchmove', onTouchMove, { passive: false });
+            renderer.domElement.addEventListener('touchend', onTouchEnd);
         }
 
         function getAnimationIndexFromParam(param) {
@@ -486,6 +499,178 @@
                     break;
                 }
             }
+        }
+
+        // Touch event handlers for pinch zoom functionality
+        function onTouchStart(event) {
+            event.preventDefault(); // Prevent default browser behavior like page scrolling
+            
+            // Handle single touch as regular click/tap
+            if (event.touches.length === 1) {
+                const touch = event.touches[0];
+                mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = - (touch.clientY / window.innerHeight) * 2 + 1;
+                
+                // Store touch point for potential pan operations
+                touchStartPoint = { x: touch.clientX, y: touch.clientY };
+                touchEndPoint = { x: touch.clientX, y: touch.clientY };
+                
+                // Check if a button is being touched
+                raycaster.setFromCamera(mouse, camera);
+                const intersects = raycaster.intersectObjects(scene.children, true);
+                
+                for (let i = 0; i < intersects.length; i++) {
+                    let currentObject = intersects[i].object;
+                    while (currentObject && !currentObject.userData?.interactive) {
+                        currentObject = currentObject.parent;
+                    }
+                    
+                    if (currentObject && currentObject.userData.interactive && !currentObject.userData.disabled) {
+                        // We're touching a button, so we'll handle this in touchend
+                        return;
+                    }
+                }
+                
+                // Set pinch zoom target point in 3D space
+                raycaster.setFromCamera(mouse, camera);
+                const intersects3D = raycaster.intersectObjects(scene.children, true);
+                if (intersects3D.length > 0) {
+                    // Use the first intersection point as the target for pinch zooming
+                    pinchZoomTarget.copy(intersects3D[0].point);
+                }
+                
+                return;
+            }
+            
+            // Handle multi-touch for pinch zoom
+            if (event.touches.length === 2) {
+                isPinching = true;
+                
+                // Calculate the initial distance between the two touches
+                const touch1 = event.touches[0];
+                const touch2 = event.touches[1];
+                
+                // Get the midpoint of the two touches
+                const midX = (touch1.clientX + touch2.clientX) / 2;
+                const midY = (touch1.clientY + touch2.clientY) / 2;
+                
+                // Convert midpoint to normalized device coordinates
+                mouse.x = (midX / window.innerWidth) * 2 - 1;
+                mouse.y = - (midY / window.innerHeight) * 2 + 1;
+                
+                // Cast a ray to find the 3D point at the midpoint of the pinch
+                raycaster.setFromCamera(mouse, camera);
+                const intersects = raycaster.intersectObjects(scene.children, true);
+                
+                // Set the pinch zoom target point
+                if (intersects.length > 0) {
+                    pinchZoomTarget.copy(intersects[0].point);
+                } else {
+                    // If no intersection found, use a point in front of the camera
+                    pinchZoomTarget.set(0, 0, 0);
+                }
+                
+                // Calculate the initial distance between touches
+                touchStartDistance = Math.hypot(
+                    touch1.clientX - touch2.clientX,
+                    touch1.clientY - touch2.clientY
+                );
+                
+                // Temporarily disable OrbitControls during pinch zoom
+                controls.enabled = false;
+            }
+        }
+
+        function onTouchMove(event) {
+            event.preventDefault(); // Prevent default browser behavior
+            
+            // Handle single touch for panning
+            if (event.touches.length === 1 && !isPinching) {
+                const touch = event.touches[0];
+                touchEndPoint = { x: touch.clientX, y: touch.clientY };
+                
+                // Let OrbitControls handle the panning
+                return;
+            }
+            
+            // Handle pinch zoom with two touches
+            if (event.touches.length === 2 && isPinching) {
+                const touch1 = event.touches[0];
+                const touch2 = event.touches[1];
+                
+                // Calculate the current distance between touches
+                const currentDistance = Math.hypot(
+                    touch1.clientX - touch2.clientX,
+                    touch1.clientY - touch2.clientY
+                );
+                
+                // Calculate the zoom factor
+                const zoomDelta = currentDistance / touchStartDistance;
+                
+                // Get the current camera distance from the target
+                const currentDistance3D = camera.position.distanceTo(pinchZoomTarget);
+                
+                // Calculate new distance based on zoom factor
+                // Adjust the sensitivity factor as needed
+                const sensitivity = 0.1;
+                let newDistance = currentDistance3D;
+                
+                if (zoomDelta > 1) {
+                    // Pinch out - zoom in (decrease distance)
+                    newDistance = currentDistance3D * (1 - (zoomDelta - 1) * sensitivity);
+                } else if (zoomDelta < 1) {
+                    // Pinch in - zoom out (increase distance)
+                    newDistance = currentDistance3D * (1 + (1 - zoomDelta) * sensitivity);
+                }
+                
+                // Clamp the distance between min and max bounds
+                newDistance = Math.max(controls.minDistance, Math.min(controls.maxDistance, newDistance));
+                
+                // Calculate the direction vector from the camera to the target
+                const direction = new THREE.Vector3().subVectors(camera.position, pinchZoomTarget).normalize();
+                
+                // Set the new camera position
+                camera.position.copy(pinchZoomTarget).add(direction.multiplyScalar(newDistance));
+                
+                // Update the controls target to keep it focused on the pinch point
+                controls.target.copy(pinchZoomTarget);
+                
+                // Update the starting distance for the next move event
+                touchStartDistance = currentDistance;
+                
+                // Get the midpoint of the two touches
+                const midX = (touch1.clientX + touch2.clientX) / 2;
+                const midY = (touch1.clientY + touch2.clientY) / 2;
+                
+                // Update mouse position for raycasting
+                mouse.x = (midX / window.innerWidth) * 2 - 1;
+                mouse.y = - (midY / window.innerHeight) * 2 + 1;
+            }
+        }
+
+        function onTouchEnd(event) {
+            // If this was a single touch that didn't move much, treat it as a click
+            if (!isPinching && event.changedTouches.length === 1) {
+                const touch = event.changedTouches[0];
+                
+                // Check if the touch was a tap (didn't move much)
+                const dx = touch.clientX - touchStartPoint.x;
+                const dy = touch.clientY - touchStartPoint.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance < 10) { // 10px threshold for tap vs. drag
+                    // Simulate a click event
+                    const clickEvent = new MouseEvent('click', {
+                        clientX: touch.clientX,
+                        clientY: touch.clientY
+                    });
+                    onMouseClick(clickEvent);
+                }
+            }
+            
+            // Re-enable OrbitControls
+            controls.enabled = true;
+            isPinching = false;
         }
 
         function animate() {
