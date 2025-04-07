@@ -89,13 +89,31 @@
             camera.position.set(0, 0, 90); // Position the camera above the model
             camera.lookAt(0, 90, 0); // Make the camera look at the center of the scene
 
-            // Renderer
+            // Renderer with color correction settings
             renderer = new THREE.WebGLRenderer({
                 antialias: true, // Enable antialiasing
                 powerPreference: "high-performance", // Optimize for performance
+                preserveDrawingBuffer: true
             });
             renderer.setPixelRatio(window.devicePixelRatio || 1); // Use high-DPI scaling
             renderer.setSize(window.innerWidth, window.innerHeight);
+            
+            // Enable physically correct lighting for accurate color reproduction
+            if (renderer.physicallyCorrectLights !== undefined) {
+                renderer.physicallyCorrectLights = true;
+            }
+            
+            // Add tone mapping for better color reproduction
+            if (THREE.ACESFilmicToneMapping !== undefined) {
+                renderer.toneMapping = THREE.ACESFilmicToneMapping;
+                renderer.toneMappingExposure = 1.0;
+            }
+            
+            // Enable color encoding for accurate color representation
+            if (THREE.sRGBEncoding !== undefined) {
+                renderer.outputEncoding = THREE.sRGBEncoding;
+            }
+            
             document.body.appendChild(renderer.domElement);
 
             // Controls (Restrict to top-down view)
@@ -111,19 +129,68 @@
             // Clock
             clock = new THREE.Clock();
 
-            // Load GLB model for the book
+            // Improved lighting setup for better color reproduction
+            // Remove any existing lights
+            scene.children.forEach(child => {
+                if (child instanceof THREE.Light) {
+                    scene.remove(child);
+                }
+            });
+            
+            // Balanced lighting setup
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(1, 2, 1);
+            directionalLight.castShadow = true;
+            scene.add(directionalLight);
+            
+            const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
+            fillLight.position.set(-1, 0.5, -1);
+            scene.add(fillLight);
+
+            // Load GLB model for the book with color correction
             const loader = new THREE.GLTFLoader();
             loader.load('book3d_all_poses.glb', function(gltf) {
                 const model = gltf.scene;
 
+                // Set correct material properties to maintain original colors
+                model.traverse((child) => {
+                    if (child.isMesh) {
+                        // Enable shadows
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                        
+                        // Ensure materials correctly display colors
+                        if (child.material) {
+                            // If material is an array
+                            if (Array.isArray(child.material)) {
+                                child.material.forEach(material => {
+                                    material.needsUpdate = true;
+                                    // Preserve original material colors
+                                    material.color = material.color || new THREE.Color(0xffffff);
+                                    material.roughness = material.roughness || 0.5;
+                                    material.metalness = material.metalness || 0.0;
+                                });
+                            } else {
+                                // Single material
+                                child.material.needsUpdate = true;
+                                // Preserve original material colors
+                                child.material.color = child.material.color || new THREE.Color(0xffffff);
+                                child.material.roughness = child.material.roughness || 0.5;
+                                child.material.metalness = child.material.metalness || 0.0;
+                            }
+                        }
+                    }
+                });
+
                 // Rotate the model 90 degrees counterclockwise along the Z-axis
                 model.rotation.z = 0; // 90 degrees in radians
-                model.rotation.y = -Math.PI/2; 
+                model.rotation.y = -Math.PI/2;
 
                 model.position.x = 0.2; 
                 model.position.z = -0.4; 
-
-                model.scale.x = 0.8; 
 
                 scene.add(model);
 
@@ -192,7 +259,7 @@
             // Load Custom Link Button 1 GLB
             loader.load('web_page.glb', function(gltf) {
                 linkButton1 = gltf.scene;
-                linkButton1.position.set(0.9, 0, 1.36); // Position to the left side
+                linkButton1.position.set(0.9, 0, 1.6); // Position to the left side
                 linkButton1.rotation.z = Math.PI/2; // Rotate to match the previous orientation
                 linkButton1.rotation.y = Math.PI;
                 linkButton1.scale.set(15, 15, 15); // Scale appropriately
@@ -208,7 +275,7 @@
             // Load Custom Link Button 2 GLB
             loader.load('more_information.glb', function(gltf) {
                 linkButton2 = gltf.scene;
-                linkButton2.position.set(0.2, 0, 1.36); // Position to the left side
+                linkButton2.position.set(0.2, 0, 1.6); // Position to the left side
                 linkButton2.rotation.z = Math.PI/2; // Rotate to match the previous orientation
                 linkButton2.rotation.y = Math.PI;
                 linkButton2.scale.set(15, 15, 15); // Scale appropriately
@@ -224,7 +291,7 @@
             // Load Custom Link Button 3 GLB
             loader.load('vehicle_selection.glb', function(gltf) {
                 linkButton3 = gltf.scene;
-                linkButton3.position.set(-0.5, 0, 1.36); // Position to the left side
+                linkButton3.position.set(-0.5, 0, 1.6); // Position to the left side
                 linkButton3.rotation.z = Math.PI/2; // Rotate to match the previous orientation
                 linkButton3.rotation.y = Math.PI;
                 linkButton3.scale.set(15, 15, 15); // Scale appropriately
@@ -237,26 +304,6 @@
                 scene.add(linkButton3);
             });
 
-            // Lights
-          // Key light
-        const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.5); // Reduced intensity
-        hemisphereLight.position.set(0, 50, 0);
-        scene.add(hemisphereLight);
-
-        const pointLight = new THREE.PointLight(0xffffff, 1, 100);
-        pointLight.position.set(0, 45, 0);
-        scene.add(pointLight);
-
-        // Back light
-        const backLight = new THREE.DirectionalLight(0xffffff, 0.2);
-        backLight.position.set(0, 5, -5);
-        scene.add(backLight);
-
-        // Key light
-        const keyLight = new THREE.DirectionalLight(0xffffff, 0.01);
-        keyLight.position.set(5, 5, 5);
-        scene.add(keyLight);
-            
             renderer.domElement.addEventListener('click', onMouseClick);
             renderer.domElement.addEventListener('mousemove', onMouseMove);
         }
