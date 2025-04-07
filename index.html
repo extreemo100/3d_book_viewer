@@ -324,6 +324,12 @@
             renderer.domElement.addEventListener('touchstart', onTouchStart, { passive: false });
             renderer.domElement.addEventListener('touchmove', onTouchMove, { passive: false });
             renderer.domElement.addEventListener('touchend', onTouchEnd);
+
+            // Disable OrbitControls on mobile devices
+            if (isMobileDevice()) {
+                // For mobile, we'll implement our own panning
+                controls.enabled = false;
+            }
         }
 
         function getAnimationIndexFromParam(param) {
@@ -441,7 +447,9 @@
                     }
                 }, 100); // Short delay
             } else if (event.touches.length === 2) {
-                // Two touches - for pinch zoom (handled by OrbitControls)
+                // Two touches - for pinch zoom
+                // We'll just prevent default to avoid page zooming
+                isTouching = false;
                 isPanning = false;
             }
         }
@@ -462,16 +470,16 @@
             const deltaY = touch.clientY - touchStartY;
             
             // Calculate new camera position in the X-Z plane
-            // invert Y movement to match expected panning direction
+            // We want to move in x-z plane but keep camera looking down
             const newX = touchStartCameraPosition.x - deltaX * panSensitivity;
             const newZ = touchStartCameraPosition.z + deltaY * panSensitivity;
             
-            // Update camera position
+            // Update only the X and Z position of the camera
             camera.position.x = newX;
             camera.position.z = newZ;
             
-            // Disable OrbitControls panning during touch panning
-            controls.enabled = false;
+            // Keep the camera looking down at the scene
+            camera.lookAt(camera.position.x, 90, camera.position.z);
         }
 
         function onTouchEnd(event) {
@@ -514,9 +522,6 @@
             isTouching = false;
             isPanning = false;
             touchStartCameraPosition = null;
-            
-            // Re-enable OrbitControls
-            controls.enabled = true;
             
             // Clear timeout if it exists
             if (touchTimeout) {
@@ -624,7 +629,11 @@
             requestAnimationFrame(animate);
             const delta = clock.getDelta();
             if (mixer) mixer.update(delta); // Update the animation mixer
-            controls.update(); // Update the camera controls
+            
+            // Only update controls if not a mobile device
+            if (!isMobileDevice()) {
+                controls.update(); // Update the camera controls
+            }
             
             // Add visual feedback for button hover
             const normalScale = 15;
@@ -686,23 +695,6 @@
         function isMobileDevice() {
             return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         }
-
-        // Adjust controls based on device
-        function setControlsForDevice() {
-            if (isMobileDevice()) {
-                // On mobile, we'll rely on touch events for panning
-                controls.enableZoom = true;
-                controls.enablePan = false; // Disable built-in panning
-                panSensitivity = 0.03; // Increased sensitivity for mobile
-            } else {
-                // On desktop, use OrbitControls normally
-                controls.enableZoom = true;
-                controls.enablePan = true;
-            }
-        }
-
-        // Call this function on initialization
-        setControlsForDevice();
     </script>
 </body>
 </html>
