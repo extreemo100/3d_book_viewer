@@ -27,14 +27,19 @@
     <div id="animation-selector">
         <div id="animation-info">Action: <span id="current-action-name">None</span> (<span id="current-action-index">0</span>/13)</div>
     </div>
-    
-    <!-- Local library scripts -->
-    <script src="three.min.js"></script>
-    <script src="GLTFLoader.js"></script>
-    <script src="OrbitControls.js"></script>
-    
-    <script>
-        // Rest of the previous script remains the same, with global THREE namespace
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.162.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.162.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
         let scene, camera, renderer, mixer, clock, controls;
         const animations = [];
         let currentAnimationAction = null;
@@ -89,35 +94,17 @@
             camera.position.set(0, 0, 90); // Position the camera above the model
             camera.lookAt(0, 90, 0); // Make the camera look at the center of the scene
 
-            // Renderer with color correction settings
+            // Renderer
             renderer = new THREE.WebGLRenderer({
                 antialias: true, // Enable antialiasing
                 powerPreference: "high-performance", // Optimize for performance
-                preserveDrawingBuffer: true
             });
             renderer.setPixelRatio(window.devicePixelRatio || 1); // Use high-DPI scaling
             renderer.setSize(window.innerWidth, window.innerHeight);
-            
-            // Enable physically correct lighting for accurate color reproduction
-            if (renderer.physicallyCorrectLights !== undefined) {
-                renderer.physicallyCorrectLights = true;
-            }
-            
-            // Add tone mapping for better color reproduction
-            if (THREE.ACESFilmicToneMapping !== undefined) {
-                renderer.toneMapping = THREE.ACESFilmicToneMapping;
-                renderer.toneMappingExposure = 1.0;
-            }
-            
-            // Enable color encoding for accurate color representation
-            if (THREE.sRGBEncoding !== undefined) {
-                renderer.outputEncoding = THREE.sRGBEncoding;
-            }
-            
             document.body.appendChild(renderer.domElement);
 
             // Controls (Restrict to top-down view)
-            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls = new OrbitControls(camera, renderer.domElement);
             controls.enableRotate = false; // Disable rotation
             controls.enablePan = true; // Allow panning
             controls.enableZoom = true; // Allow zooming
@@ -129,65 +116,14 @@
             // Clock
             clock = new THREE.Clock();
 
-            // Improved lighting setup for better color reproduction
-            // Remove any existing lights
-            scene.children.forEach(child => {
-                if (child instanceof THREE.Light) {
-                    scene.remove(child);
-                }
-            });
-            
-            // Balanced lighting setup
-            const ambientLight = new THREE.AmbientLight(0xffffff, 2);
-            scene.add(ambientLight);
-            
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-            directionalLight.position.set(1, 1, 1);
-            directionalLight.castShadow = true;
-            scene.add(directionalLight);
-            
-            //const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
-            //fillLight.position.set(-1, 0.5, -1);
-            //scene.add(fillLight);
-
-            // Load GLB model for the book with color correction
-            const loader = new THREE.GLTFLoader();
+            // Load GLB model for the book
+            const loader = new GLTFLoader();
             loader.load('book3d_all_poses.glb', function(gltf) {
                 const model = gltf.scene;
 
-                // Set correct material properties to maintain original colors
-                model.traverse((child) => {
-                    if (child.isMesh) {
-                        // Enable shadows
-                        child.castShadow = true;
-                        child.receiveShadow = true;
-                        
-                        // Ensure materials correctly display colors
-                        if (child.material) {
-                            // If material is an array
-                            if (Array.isArray(child.material)) {
-                                child.material.forEach(material => {
-                                    material.needsUpdate = true;
-                                    // Preserve original material colors
-                                    material.color = material.color || new THREE.Color(0xffffff);
-                                    material.roughness = material.roughness || 0.5;
-                                    material.metalness = material.metalness || 0.0;
-                                });
-                            } else {
-                                // Single material
-                                child.material.needsUpdate = true;
-                                // Preserve original material colors
-                                child.material.color = child.material.color || new THREE.Color(0xffffff);
-                                child.material.roughness = child.material.roughness || 0.5;
-                                child.material.metalness = child.material.metalness || 0.0;
-                            }
-                        }
-                    }
-                });
-
                 // Rotate the model 90 degrees counterclockwise along the Z-axis
                 model.rotation.z = 0; // 90 degrees in radians
-                model.rotation.y = -Math.PI/2;
+                model.rotation.y = -Math.PI/2; 
 
                 model.position.x = 0.2; 
                 model.position.z = -0.4; 
@@ -306,6 +242,16 @@
                 scene.add(linkButton3);
             });
 
+            // Lights
+            const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 2); // Bright ambient light
+            hemisphereLight.position.set(0, 50, 0);
+            scene.add(hemisphereLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(1, 1, 1);
+            scene.add(directionalLight);
+
+            // Mouse event listeners for 3D button interaction
             renderer.domElement.addEventListener('click', onMouseClick);
             renderer.domElement.addEventListener('mousemove', onMouseMove);
         }
