@@ -7,6 +7,19 @@
     <style>
         body { margin: 0; }
         canvas { display: block; }
+        #loading-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 24px;
+            font-family: Arial, sans-serif;
+            background-color: rgba(0,0,0,0.7);
+            padding: 20px;
+            border-radius: 10px;
+            z-index: 100;
+        }
         #animation-selector {
             display: none;
             position: absolute;
@@ -24,6 +37,7 @@
     </style>
 </head>
 <body>
+    <div id="loading-message">Please rotate your screen for optimal experience</div>
     <div id="animation-selector">
         <div id="animation-info">Action: <span id="current-action-name">None</span> (<span id="current-action-index">0</span>/13)</div>
     </div>
@@ -58,11 +72,11 @@
         let link2Hovered = false;
         let link3Hovered = false;
 
-        // Link URLs
+        // Link URLs and file download
         const linkUrls = {
             'link3': 'https://psopk.com/en/lubricants/lubricant-finder/',
             'link2': 'https://psopk.com/en/lubricants',
-            'link1': 'https://psopk.com/'
+            'link1': 'Pocketguide.pdf' // Local file to download instead of URL
         };
 
         // Background image mapping
@@ -116,8 +130,36 @@
             // Clock
             clock = new THREE.Clock();
 
-            // Load GLB model for the book
+            // Lights
+            const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 2); // Bright ambient light
+            hemisphereLight.position.set(0, 50, 0);
+            scene.add(hemisphereLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(1, 1, 1);
+            scene.add(directionalLight);
+
+            // Mouse event listeners for 3D button interaction
+            renderer.domElement.addEventListener('click', onMouseClick);
+            renderer.domElement.addEventListener('mousemove', onMouseMove);
+
+            // Delay loading all GLB files for 5 seconds
+            setTimeout(() => {
+                // Remove loading message
+                const loadingMessage = document.getElementById('loading-message');
+                if (loadingMessage) {
+                    loadingMessage.remove();
+                }
+                
+                // Load all GLB models after the delay
+                loadGLBModels();
+            }, 5000);
+        }
+
+        function loadGLBModels() {
             const loader = new GLTFLoader();
+            
+            // Load GLB model for the book
             loader.load('book3d_all_poses.glb', function(gltf) {
                 const model = gltf.scene;
 
@@ -194,26 +236,10 @@
                 scene.add(prevButton);
             });
 
-            // Load Custom Link Button 1 GLB
-            loader.load('web_page.glb', function(gltf) {
-                linkButton1 = gltf.scene;
-                linkButton1.position.set(0.9, 0, 1.35); // Position to the left side
-                linkButton1.rotation.z = Math.PI/2; // Rotate to match the previous orientation
-                linkButton1.rotation.y = Math.PI;
-                linkButton1.scale.set(15, 15, 15); // Scale appropriately
-                linkButton1.userData = {
-                    type: 'link1',
-                    interactive: true,
-                    disabled: false,
-                    url: linkUrls['link1']
-                };
-                scene.add(linkButton1);
-            });
-
             // Load Custom Link Button 2 GLB
             loader.load('more_information.glb', function(gltf) {
                 linkButton2 = gltf.scene;
-                linkButton2.position.set(0.2, 0, 1.35); // Position to the left side
+                linkButton2.position.set(0.9, 0, 1.35); // Position to the left side
                 linkButton2.rotation.z = Math.PI/2; // Rotate to match the previous orientation
                 linkButton2.rotation.y = Math.PI;
                 linkButton2.scale.set(15, 15, 15); // Scale appropriately
@@ -229,7 +255,7 @@
             // Load Custom Link Button 3 GLB
             loader.load('vehicle_selection.glb', function(gltf) {
                 linkButton3 = gltf.scene;
-                linkButton3.position.set(-0.5, 0, 1.35); // Position to the left side
+                linkButton3.position.set(0.2, 0, 1.35); // Position to the left side
                 linkButton3.rotation.z = Math.PI/2; // Rotate to match the previous orientation
                 linkButton3.rotation.y = Math.PI;
                 linkButton3.scale.set(15, 15, 15); // Scale appropriately
@@ -242,18 +268,21 @@
                 scene.add(linkButton3);
             });
 
-            // Lights
-            const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 2); // Bright ambient light
-            hemisphereLight.position.set(0, 50, 0);
-            scene.add(hemisphereLight);
-            
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-            directionalLight.position.set(1, 1, 1);
-            scene.add(directionalLight);
-
-            // Mouse event listeners for 3D button interaction
-            renderer.domElement.addEventListener('click', onMouseClick);
-            renderer.domElement.addEventListener('mousemove', onMouseMove);
+            // Load Custom Link Button 1 GLB (Download button)
+            loader.load('download.glb', function(gltf) {
+                linkButton1 = gltf.scene;
+                linkButton1.position.set(-0.5, 0, 1.35); // Position to the left side
+                linkButton1.rotation.z = Math.PI/2; // Rotate to match the previous orientation
+                linkButton1.rotation.y = Math.PI;
+                linkButton1.scale.set(15, 15, 15); // Scale appropriately
+                linkButton1.userData = {
+                    type: 'link1',
+                    interactive: true,
+                    disabled: false,
+                    fileToDownload: linkUrls['Pocketguide.pdf'] // File to download
+                };
+                scene.add(linkButton1);
+            });
         }
 
         function getAnimationIndexFromParam(param) {
@@ -333,10 +362,33 @@
         }
 
         function handleLink(linkType) {
-            const url = linkUrls[linkType];
-            if (url) {
-                window.location.href = url;
+            if (linkType === 'link1') {
+                // Handle download for link1
+                downloadFile(linkUrls[linkType]);
+            } else {
+                // Handle regular navigation for other links
+                const url = linkUrls[linkType];
+                if (url) {
+                    window.location.href = url;
+                }
             }
+        }
+
+        // Function to download a file
+        function downloadFile(filename) {
+            // Create an anchor element
+            const link = document.createElement('a');
+            link.href = filename; // Path to the file in the same folder
+            link.download = filename; // Suggest filename for download
+            
+            // Append to the document temporarily
+            document.body.appendChild(link);
+            
+            // Trigger the download
+            link.click();
+            
+            // Clean up
+            document.body.removeChild(link);
         }
 
         function onMouseMove(event) {
