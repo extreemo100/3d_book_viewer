@@ -7,18 +7,21 @@
     <style>
         body { margin: 0; }
         canvas { display: block; }
-        #loading-message {
+        #loading-container {
             position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: white;
-            font-size: 24px;
-            font-family: Arial, sans-serif;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
             background-color: rgba(0,0,0,0.7);
-            padding: 20px;
-            border-radius: 10px;
             z-index: 100;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #loading-video {
+            max-width: 100%;
+            max-height: 100%;
         }
         #animation-selector {
             display: none;
@@ -37,7 +40,13 @@
     </style>
 </head>
 <body>
-    <div id="loading-message">Please rotate your screen for optimal experience</div>
+    <div id="loading-container">
+        <video id="loading-video" autoplay loop muted playsinline>
+            <source src="h.mp4" type="video/mp4">
+            <!-- Fallback text if video can't be played -->
+            Please rotate your screen for optimal experience
+        </video>
+    </div>
     <div id="animation-selector">
         <div id="animation-info">Action: <span id="current-action-name">None</span> (<span id="current-action-index">0</span>/13)</div>
     </div>
@@ -143,12 +152,21 @@
             renderer.domElement.addEventListener('click', onMouseClick);
             renderer.domElement.addEventListener('mousemove', onMouseMove);
 
+            // Preload the video
+            const loadingVideo = document.getElementById('loading-video');
+            loadingVideo.load();
+
             // Delay loading all GLB files for 5 seconds
             setTimeout(() => {
-                // Remove loading message
-                const loadingMessage = document.getElementById('loading-message');
-                if (loadingMessage) {
-                    loadingMessage.remove();
+                // Remove loading container with video
+                const loadingContainer = document.getElementById('loading-container');
+                if (loadingContainer) {
+                    // Fade out effect
+                    loadingContainer.style.transition = 'opacity 1s';
+                    loadingContainer.style.opacity = '0';
+                    setTimeout(() => {
+                        loadingContainer.remove();
+                    }, 1000);
                 }
                 
                 // Load all GLB models after the delay
@@ -269,7 +287,7 @@
             });
 
             // Load Custom Link Button 1 GLB (Download button)
-            loader.load('download2.glb', function(gltf) {
+            loader.load('download.glb', function(gltf) {
                 linkButton1 = gltf.scene;
                 linkButton1.position.set(-0.5, 0, 1.35); // Position to the left side
                 linkButton1.rotation.z = Math.PI/2; // Rotate to match the previous orientation
